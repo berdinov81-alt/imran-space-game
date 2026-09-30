@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#030817">
+<meta name="description" content="Имран на ракете: разбивай метеориты и управляй полётом двумя пальцами.">
+<title>Имран: Метеоритный штурм</title>
+<link rel="icon" href="face.jpg">
+<link rel="stylesheet" href="styles.css">
+<script src="game.js" defer></script>
+</head><body>
+<canvas id="game" aria-label="Космическая игра"></canvas>
+<div id="top" class="hidden"><div class="hud">❤️ <span id="lives">3</span> &nbsp; ⭐ <span id="score">0</span></div><div class="hud">Ур. <span id="level">1</span> &nbsp; 🏆 <span id="best">0</span></div></div>
+<div id="weapons" class="hidden"><button class="weapon active" data-w="laser">ЛАЗЕР</button><button class="weapon" data-w="plasma">ПЛАЗМА</button><button class="weapon" data-w="multi">МУЛЬТИ</button></div>
+<div id="hint" class="hint hidden">☝️ Одним пальцем веди ракету по экрану.<br>🔥 Вторым пальцем держи кнопку ОГОНЬ.</div>
+<button id="fire" class="hidden" aria-label="Огонь">🔥 ОГОНЬ</button><button id="pause" class="hidden" aria-label="Пауза">⏸</button>
+<div id="start" class="overlay"><div class="card"><div class="hero"><img src="cover.jpg" alt="Обложка"></div><div class="title">Имран: Метеоритный штурм</div><div class="sub">Аркадная космическая игра для телефона. Управление сделано специально под два пальца.</div><div class="small"><b>Как играть:</b> положи один палец на любую свободную часть экрана и двигай — ракета следует за движением пальца. Вторым пальцем зажми круглую кнопку <b>ОГОНЬ</b> в правом нижнем углу. Оружие переключается кнопками слева снизу. На компьютере: WASD / стрелки, пробел — огонь, P — пауза.</div><p><div id="loading" role="status">Загрузка игры… Если экран не оживает, открой ссылку игры в Safari или Chrome, а не предпросмотр файла.</div><noscript>Для игры нужен JavaScript. Открой страницу в Safari или Chrome.</noscript><button disabled id="startBtn" class="startbtn">🚀 НАЧАТЬ ИГРУ</button></p></div></div>
+<div id="over" class="overlay hidden"><div class="card" style="max-width:480px;text-align:center"><div class="title">Миссия окончена</div><div class="sub">Счёт: <b id="final">0</b><br>Лучший результат: <b id="finalBest">0</b></div><p><button id="again" class="startbtn">↻ ЕЩЁ РАЗ</button></p></div></div>
+</body></html>
