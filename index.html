@@ -1,20 +1,71 @@
 <!doctype html>
-<html lang="ru"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#030817">
-<meta name="description" content="Имран на ракете: разбивай метеориты и управляй полётом двумя пальцами.">
-<title>Имран: Метеоритный штурм</title>
-<link rel="icon" href="face.jpg">
-<link rel="stylesheet" href="styles.css">
-<script src="game.js" defer></script>
-</head><body>
-<canvas id="game" aria-label="Космическая игра"></canvas>
-<div id="top" class="hidden"><div class="hud">❤️ <span id="lives">3</span> &nbsp; ⭐ <span id="score">0</span></div><div class="hud">Ур. <span id="level">1</span> &nbsp; 🏆 <span id="best">0</span></div></div>
-<div id="weapons" class="hidden"><button class="weapon active" data-w="laser">ЛАЗЕР</button><button class="weapon" data-w="plasma">ПЛАЗМА</button><button class="weapon" data-w="multi">МУЛЬТИ</button></div>
-<div id="hint" class="hint hidden">☝️ Одним пальцем веди ракету по экрану.<br>🔥 Вторым пальцем держи кнопку ОГОНЬ.</div>
-<button id="fire" class="hidden" aria-label="Огонь">🔥 ОГОНЬ</button><button id="pause" class="hidden" aria-label="Пауза">⏸</button>
-<div id="start" class="overlay"><div class="card"><div class="hero"><img src="cover.jpg" alt="Обложка"></div><div class="title">Имран: Метеоритный штурм</div><div class="sub">Аркадная космическая игра для телефона. Управление сделано специально под два пальца.</div><div class="small"><b>Как играть:</b> положи один палец на любую свободную часть экрана и двигай — ракета следует за движением пальца. Вторым пальцем зажми круглую кнопку <b>ОГОНЬ</b> в правом нижнем углу. Оружие переключается кнопками слева снизу. На компьютере: WASD / стрелки, пробел — огонь, P — пауза.</div><p><div id="loading" role="status">Загрузка игры… Если экран не оживает, открой ссылку игры в Safari или Chrome, а не предпросмотр файла.</div><noscript>Для игры нужен JavaScript. Открой страницу в Safari или Chrome.</noscript><button disabled id="startBtn" class="startbtn">🚀 НАЧАТЬ ИГРУ</button></p></div></div>
-<div id="over" class="overlay hidden"><div class="card" style="max-width:480px;text-align:center"><div class="title">Миссия окончена</div><div class="sub">Счёт: <b id="final">0</b><br>Лучший результат: <b id="finalBest">0</b></div><p><button id="again" class="startbtn">↻ ЕЩЁ РАЗ</button></p></div></div>
-</body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#050914">
+  <meta name="description" content="Имран: Звёздный защитник. Лети на ракете, собирай новое оружие, сражайся с кораблями пришельцев и побеждай боссов.">
+  <title>Имран: Звёздный защитник</title>
+  <link rel="icon" href="face.jpg">
+  <link rel="stylesheet" href="styles.css?v=2.0.0">
+  <script src="game.js?v=2.0.0" defer></script>
+</head>
+<body>
+  <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-laser" viewBox="0 0 24 24"><path d="m14 2-7 11h5l-2 9 8-12h-5z"/></symbol>
+    <symbol id="icon-spread" viewBox="0 0 24 24"><path d="M12 21V4M5 17 2 5m17 12 3-12"/><path d="m8 7 4-4 4 4M1 8l1-4 4 2m12 0 4-2 1 4"/></symbol>
+    <symbol id="icon-plasma" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M8 2h8m-8 20h8M2 8v8m20-8v8M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/></symbol>
+    <symbol id="icon-rockets" viewBox="0 0 24 24"><path d="M9 15c-1-5 4-11 12-12 0 8-6 13-11 12zM9 10 4 9l-2 5 6 1m6 1 1 6 5-2-1-5M7 17l-4 4m3-7-4 4"/><circle cx="16" cy="8" r="2"/></symbol>
+    <symbol id="icon-beam" viewBox="0 0 24 24"><path d="M8 21V4m4 17V2m4 19V4M4 19h16M5 8l3-4 3 4m2 0 3-4 3 4"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+    <symbol id="icon-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/><circle cx="12" cy="12" r="1"/></symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24"><path d="m12 2 8 3v6c0 5-8 11-8 11S4 16 4 11V5zM8 12l3 3 5-6"/></symbol>
+    <symbol id="icon-ship" viewBox="0 0 24 24"><path d="m12 2 8 18-8-4-8 4zM12 8v8m-5-3 5-3 5 3"/></symbol>
+  </svg>
+
+  <canvas id="game" aria-label="Космическая игра: Имран на ракете защищает галактику"></canvas>
+  <header id="top" class="hidden" aria-label="Показатели миссии">
+    <div class="hud-row">
+      <div class="score-panel"><span class="hud-label">СЧЁТ</span><strong id="score">0</strong></div>
+      <div class="hull-panel"><svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg><span class="hull-value"><strong id="lives">4</strong><span class="hud-label">ЖИЗНИ</span></span></div>
+      <div class="best-panel"><span class="hud-label">РЕКОРД</span><strong id="best">0</strong></div>
+    </div>
+    <div class="stage-panel"><div class="stage-caption"><span><span class="stage-kicker">СЕКТОР <b id="level">1</b></span><strong id="stageName">Орбита Земли</strong></span><span id="stageProgress">0 / 15</span></div><div class="stage-track"><span id="stageFill"></span></div></div>
+    <div id="bossHud" class="boss-panel hidden"><div class="boss-caption"><span class="boss-warning">БОСС</span><strong id="bossName">Командир флота</strong><span id="bossPhase">Фаза 1</span></div><div class="boss-track"><span id="bossHealth"></span></div></div>
+  </header>
+  <button id="pause" class="hidden" type="button" aria-label="Пауза">Ⅱ</button>
+  <div id="announce" class="announce hidden" aria-live="polite"><span class="announce-line"></span><strong id="announceTitle">Сектор 1</strong><span id="announceText">Защити орбиту Земли</span></div>
+  <div id="hint" class="hint hidden"><span class="hint-mark">↗</span><span>Веди ракету одним пальцем.<br>Вторым удерживай <b>ОГОНЬ</b>.</span></div>
+  <div id="weaponStatus" class="weapon-status"><span class="status-label">НА ВООРУЖЕНИИ</span><strong id="weaponName">Лазер</strong><span id="weaponPower">Уровень 1</span></div>
+  <button id="fire" class="hidden" type="button" aria-label="Огонь, удерживай для стрельбы"><svg aria-hidden="true"><use href="#icon-crosshair"/></svg><span>ОГОНЬ</span></button>
+  <nav id="weapons" class="hidden" aria-label="Арсенал: собирай оружие в полёте">
+    <button class="weapon active" type="button" data-w="laser" title="Лазер — быстрое точное оружие" aria-label="Лазер, уровень 1"><svg class="weapon-icon" aria-hidden="true"><use href="#icon-laser"/></svg><span class="weapon-label">ЛАЗЕР</span><span class="weapon-level">I</span><svg class="weapon-lock" aria-hidden="true"><use href="#icon-lock"/></svg></button>
+    <button class="weapon locked" type="button" data-w="spread" disabled title="Подбери Тройной залп в полёте" aria-label="Тройной залп, пока не найден"><svg class="weapon-icon" aria-hidden="true"><use href="#icon-spread"/></svg><span class="weapon-label">ЗАЛП</span><span class="weapon-level"></span><svg class="weapon-lock" aria-hidden="true"><use href="#icon-lock"/></svg></button>
+    <button class="weapon locked" type="button" data-w="plasma" disabled title="Подбери Плазму в полёте" aria-label="Плазма, пока не найдена"><svg class="weapon-icon" aria-hidden="true"><use href="#icon-plasma"/></svg><span class="weapon-label">ПЛАЗМА</span><span class="weapon-level"></span><svg class="weapon-lock" aria-hidden="true"><use href="#icon-lock"/></svg></button>
+    <button class="weapon locked" type="button" data-w="rockets" disabled title="Подбери Ракеты в полёте" aria-label="Ракеты, пока не найдены"><svg class="weapon-icon" aria-hidden="true"><use href="#icon-rockets"/></svg><span class="weapon-label">РАКЕТЫ</span><span class="weapon-level"></span><svg class="weapon-lock" aria-hidden="true"><use href="#icon-lock"/></svg></button>
+    <button class="weapon locked" type="button" data-w="beam" disabled title="Подбери Ионный луч в полёте" aria-label="Ионный луч, пока не найден"><svg class="weapon-icon" aria-hidden="true"><use href="#icon-beam"/></svg><span class="weapon-label">ЛУЧ</span><span class="weapon-level"></span><svg class="weapon-lock" aria-hidden="true"><use href="#icon-lock"/></svg></button>
+  </nav>
+  <section id="start" class="overlay" aria-label="Начать игру">
+    <div class="card intro-card">
+      <div class="hero"><img class="heroPilot" src="pilot-v2.png" alt="Имран верхом на космической ракете" fetchpriority="high"><div class="hero-grain"></div><span class="hero-badge"><i></i> ГАЛАКТИКА ЖДЁТ ГЕРОЯ</span><div class="hero-caption"><span>ПИЛОТ</span><strong>ИМРАН</strong><span class="hero-call">ГОТОВ К ВЗЛЁТУ</span></div></div>
+      <div class="intro-content">
+        <div class="eyebrow">КОСМИЧЕСКОЕ ПРИКЛЮЧЕНИЕ</div>
+        <h1>Имран<span>Звёздный защитник</span></h1>
+        <p class="intro-copy">Корабли пришельцев атакуют. Взлетай на ракете, собирай арсенал и побеждай командиров их флота.</p>
+        <div class="mission-features"><span><svg aria-hidden="true"><use href="#icon-ship"/></svg>Новые враги</span><span><svg aria-hidden="true"><use href="#icon-plasma"/></svg>5 видов оружия</span><span><svg aria-hidden="true"><use href="#icon-shield"/></svg>Боссы</span></div>
+        <div class="howto"><div><span class="step-number">1</span><span><b>Веди ракету</b><small>Двигай пальцем по экрану</small></span></div><div><span class="step-number">2</span><span><b>Удерживай ОГОНЬ</b><small>Лови падающее оружие</small></span></div></div>
+        <div class="difficulty-section"><div class="difficulty-heading"><span class="section-label">СЛОЖНОСТЬ</span><button id="sound" type="button" aria-label="Включить звук" aria-pressed="false">ЗВУК ВЫКЛ.</button></div><div id="difficulty" role="group" aria-label="Сложность игры"><button type="button" data-difficulty="easy" aria-pressed="false">Лёгкая</button><button type="button" data-difficulty="normal" class="selected" aria-pressed="true">Обычная</button><button type="button" data-difficulty="hard" aria-pressed="false">Сложная</button></div></div>
+        <div id="loading" role="status">Готовим ракету к взлёту…</div>
+        <noscript>Для игры нужен JavaScript. Открой страницу в Safari или Chrome.</noscript>
+        <button disabled id="startBtn" class="startbtn" type="button"><svg aria-hidden="true"><use href="#icon-ship"/></svg><span>ВПЕРЁД, ИМРАН!</span><span class="button-arrow">↗</span></button>
+        <p class="keyboard-help">На компьютере: <kbd>WASD</kbd> / стрелки · <kbd>Пробел</kbd> огонь · <kbd>P</kbd> пауза</p>
+      </div>
+    </div>
+  </section>
+  <section id="over" class="overlay hidden" aria-label="Результат миссии">
+    <div class="card result-card"><div class="result-emblem"><svg aria-hidden="true"><use href="#icon-ship"/></svg></div><div class="eyebrow">ЗВЁЗДНЫЙ ЗАЩИТНИК</div><h2>Миссия окончена</h2><p class="result-copy">Каждый вылет делает тебя сильнее.</p><div class="result-scores"><div><span class="section-label">ТВОЙ СЧЁТ</span><strong id="final">0</strong></div><div><span class="section-label">РЕКОРД</span><strong id="finalBest">0</strong></div></div><div id="missionStats" class="mission-stats"></div><button id="again" class="startbtn" type="button"><span>ЕЩЁ ОДИН ВЫЛЕТ</span><span class="button-arrow">↗</span></button></div>
+  </section>
+</body>
+</html>
+
