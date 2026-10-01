@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+mobile/android/.gradle/
+mobile/android/**/build/
+mobile/ios/DerivedData/
+*.jks
+*.keystore
+*.p12

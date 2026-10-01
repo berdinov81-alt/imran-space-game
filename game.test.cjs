@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const root = __dirname;
 
 // Test the shipped loop and handlers without exposing a test API to players.
-function harness({ width = 390, height = 844, storageBlocked = false } = {}) {
+function harness({ width = 390, height = 844, storageBlocked = false, mode = 'campaign', autoFire = false } = {}) {
   const elements = new Map(), frames = [], events = new Map();
   let clock = 1000, seed = 810011, created = 0;
   function element(id) {
@@ -55,14 +55,14 @@ function harness({ width = 390, height = 844, storageBlocked = false } = {}) {
     const button = element('difficulty:' + type); button.dataset.difficulty = type; return button;
   });
   const document = {
-    hidden: false, getElementById: element, createElement: tag => element(tag + ':created:' + created++),
+    hidden: false, dispatchEvent(event) { for (const fn of events.get('document:'+event.type)||[]) fn(event); }, getElementById: element, createElement: tag => element(tag + ':created:' + created++),
     querySelectorAll: selector => selector === '.weapon' ? weapons : selector === '[data-difficulty]' ? difficultyButtons : [],
     addEventListener(type, fn) { if (!events.has('document:' + type)) events.set('document:' + type, []); events.get('document:' + type).push(fn); }
   };
   const seededMath = Object.create(Math);
   seededMath.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
   const sandbox = {
-    document, Math: seededMath, Image: class { complete = true; naturalWidth = 256; naturalHeight = 256; },
+    document, CustomEvent: class { constructor(type, options={}){this.type=type;this.detail=options.detail;} }, Math: seededMath, Image: class { complete = true; naturalWidth = 256; naturalHeight = 256; },
     innerWidth: width, innerHeight: height, devicePixelRatio: 3,
     performance: { now: () => clock },
     localStorage: {
@@ -72,16 +72,17 @@ function harness({ width = 390, height = 844, storageBlocked = false } = {}) {
     requestAnimationFrame: fn => frames.push(fn),
     addEventListener(type, fn) { if (!events.has(type)) events.set(type, []); events.get(type).push(fn); }
   };
-  vm.createContext(sandbox);
+  vm.createContext(sandbox);vm.runInContext(fs.readFileSync(path.join(root,'campaign.js'),'utf8'),sandbox);sandbox.ImranCampaign.profile.state.settings.autoFire=autoFire;
   const source = fs.readFileSync(path.join(root, 'game.js'), 'utf8');
   const instrumented = source.replace(/\}\)\(\);\s*$/, `
     globalThis.inspection = {
       get state() { return { running, paused, gameTime, level, stageTime, stageMode, boss,
-        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives,
+        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives, runMode, mission, world, missionDamage, salvageTaken, eliteKills, special, hazards, stormWarnings, formationIndex,
         movePointerId, fireCount: fireTouches.size, keyCount: keys.size }; },
       reset, startGame, update, shoot, createEnemy, createPickup, beginBoss,
       damageEnemy, damageBoss, damagePlayer, collectPickup, defeatBoss, setWeapon, setPaused, clearInput, resize,
-      enemyTypes, MAX_POWER,
+      enemyTypes, MAX_POWER, waveDuration, activateSpecial, spawnFormation, updateStorm, bossWarning, bossAttack, profile, returnToLobby,
+      configureMission: id => { selectedMission=id;profile.state.unlocked=id;profile.state.selected=id;level=id;changeMission(id); },
       endGame: () => endGame(), setScore: value => { score = value; }
     };
   })();`);
@@ -94,7 +95,7 @@ function harness({ width = 390, height = 844, storageBlocked = false } = {}) {
     visibility(hidden) { document.hidden = hidden; for (const fn of events.get('document:visibilitychange') || []) fn(); },
     tick(n = 1) { for (let i = 0; i < n; i++) { clock += 1000 / 60; assert.equal(frames.length, 1, 'Exactly one animation loop'); frames.shift()(clock); } },
     advance(seconds) { this.tick(Math.ceil(seconds * 60)); },
-    start() { element('startBtn').emit('click'); },
+    start() { if(mode==='endless')document.dispatchEvent(new sandbox.CustomEvent('imran:launch',{detail:{mode:'endless',mission:1}}));else element('startBtn').emit('click'); },
     pressWeapon(type) { const button = weapons.find(w => w.dataset.w === type); assert.ok(button, type + ' must be in the weapon bar'); element('weapons').emit('click', { target: button }); },
     weaponButton(type) { return weapons.find(w => w.dataset.w === type); },
     pickup(type) { this.api.createPickup(type, this.state.player.x, this.state.player.y); this.api.update(0); }
@@ -104,6 +105,7 @@ function harness({ width = 390, height = 844, storageBlocked = false } = {}) {
 test('release uses local resources, the original portrait, and all five weapon controls', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   for (const [, resource] of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+    if(resource.startsWith('#') || resource === 'https://github.com/berdinov81-alt/imran-space-game/issues') continue;
     assert.ok(!/^(?:\/|https?:)/.test(resource), 'Resource should work from a static folder: ' + resource);
     assert.ok(fs.existsSync(path.join(root, resource.split(/[?#]/)[0])), resource);
   }
@@ -113,6 +115,51 @@ test('release uses local resources, the original portrait, and all five weapon c
   assert.ok(fs.statSync(path.join(root, 'face.jpg')).size > 0);
   assert.ok(fs.existsSync(path.join(root, '.nojekyll')));
   for (const type of ['laser', 'spread', 'plasma', 'rockets', 'beam']) assert.match(html, new RegExp('data-w="' + type + '"'));
+});
+
+test('campaign victory awards a mission once, persists medals and unlocks only the next mission',()=>{
+ const h=harness();h.start();h.state.player.inv=Infinity;h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);
+ assert.equal(h.state.running,false);assert.equal(h.api.profile.state.unlocked,2);assert.ok(h.api.profile.state.missions[1].stars>=1);
+ const credits=h.api.profile.state.credits;h.api.defeatBoss();h.api.endGame();assert.equal(h.api.profile.state.credits,credits);
+ h.element('nextMission').emit('click');assert.equal(h.state.level,2);assert.equal(h.state.running,true);assert.equal(h.state.gameTime,0);
+});
+
+test('automatic fire works without a held finger, and defensive pulse has a real cooldown',()=>{
+ const h=harness({autoFire:true});h.start();h.advance(.5);assert.ok(h.state.shots.length>0);h.state.hostileShots.push({x:50,y:350,vx:0,vy:100,r:5,c:'#fff',life:5});
+ assert.equal(h.api.activateSpecial(),true);assert.equal(h.state.hostileShots.length,0);assert.equal(h.state.special,0);assert.equal(h.api.activateSpecial(),false);
+ h.api.setPaused(true);h.advance(20);assert.equal(h.state.special,0);h.api.setPaused(false);h.state.player.inv=Infinity;h.advance(17);assert.equal(h.state.special,100);
+});
+
+test('all 30 missions use their own timers, worlds, formation and functioning boss patterns',()=>{
+ const h=harness();for(let id=1;id<=30;id++){h.api.configureMission(id);h.start();h.state.player.inv=Infinity;
+ assert.equal(h.state.level,id);assert.equal(h.state.mission.id,id);assert.equal(h.state.world.name,h.sandbox.ImranCampaign.worlds[Math.floor((id-1)/5)].name);
+ assert.ok(h.api.waveDuration()>=54);h.api.spawnFormation();assert.ok(h.state.enemies.length>=2);
+ h.api.beginBoss();const b=h.state.boss;b.entry=0;h.api.damageBoss(b.maxHp*.55);
+ for(let i=0;i<b.patterns.length;i++){h.api.bossWarning();h.api.bossAttack();h.tick();}
+ h.api.damageBoss(b.maxHp);assert.equal(h.state.running,false);assert.ok(h.api.profile.state.missions[id]);assert.equal(h.frames.length,1);
+ }
+ assert.equal(Object.keys(h.api.profile.state.missions).length,30);assert.equal(h.api.profile.state.unlocked,30);
+});
+
+test('ion storm warns before creating a hazard and pauses safely',()=>{
+ const h=harness();h.api.configureMission(21);h.start();h.state.player.inv=Infinity;h.advance(22.2);assert.ok(h.state.stormWarnings.length>0);assert.equal(h.state.hazards.length,0);
+ h.api.setPaused(true);const before=h.state.stormWarnings[0].time;h.advance(4);assert.equal(h.state.stormWarnings[0].time,before);
+ h.api.setPaused(false);h.advance(h.state.stormWarnings[0].time+.1);assert.ok(h.state.hazards.length>0);
+});
+
+test('hangar improvements affect health, weapon damage, shields and drone firing',()=>{
+ const h=harness();h.api.profile.state.upgrades.hull=4;h.api.profile.state.upgrades.reactor=5;h.api.profile.state.upgrades.shield=2;h.api.profile.state.upgrades.wingman=2;
+ h.start();assert.equal(h.state.lives,6);assert.ok(h.state.player.shield>0);h.api.shoot();assert.ok(h.state.shots[0].d>1.2);h.advance(.25);assert.ok(h.state.shots.length>1,'Drone fires independently without holding fire');assert.equal(h.state.fireCount,0);
+});
+
+test('fast beam detects a small ship crossed between animation frames',()=>{
+ const h=harness();h.start();h.pickup('beam');h.api.shoot();const shot=h.state.shots[0],enemy=h.api.createEnemy('scout');enemy.x=shot.x;enemy.y=shot.y-30;enemy.vy=0;enemy.vx=0;
+ const hp=enemy.hp;h.api.update(.035);assert.ok(enemy.hp<hp,'Swept projectile collision must not tunnel through a scout');
+});
+
+test('returning to the lobby clears controls and keeps one animation loop',()=>{
+ const h=harness();h.start();h.element('fire').emit('pointerdown',{pointerId:99});h.api.returnToLobby('campaign');h.advance(2);
+ assert.equal(h.state.running,false);assert.equal(h.state.fireCount,0);assert.equal(h.frames.length,1);assert.equal(h.element('start').classList.contains('hidden'),false);
 });
 
 test('blocked storage cannot prevent starting, spawning enemies, ending, or replaying', () => {
@@ -252,14 +299,14 @@ test('every collected weapon fires and spread creates an angled volley', () => {
 test('score cannot skip a stage and the wave ends with a mandatory boss', () => {
   const h = harness(); h.start(); h.state.player.inv = Infinity;
   h.api.setScore(1000000); h.api.update(0); assert.equal(h.state.level, 1);
-  h.advance(37); assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
+  h.advance(h.api.waveDuration()-1); assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
   h.advance(1.2); assert.equal(h.state.stageMode, 'boss'); assert.ok(h.state.boss);
   const boss = h.state.boss; assert.ok(boss.hp > 0 && boss.maxHp >= boss.hp);
   h.advance(10); assert.equal(h.state.level, 1); assert.equal(h.state.stageMode, 'boss'); assert.equal(h.state.boss, boss);
 });
 
 test('bosses gain attack phases as HP falls and their defeat unlocks the next stage', () => {
-  const h = harness(); h.start(); h.state.player.inv = Infinity; h.api.beginBoss();
+  const h = harness({mode:'endless'}); h.start(); h.state.player.inv = Infinity; h.api.beginBoss();
   const first = h.state.boss, firstPhase = first.phase;
   h.api.damageBoss(first.maxHp * .55); h.api.update(0);
   assert.ok(first.hp < first.maxHp * .5); assert.ok(first.phase > firstPhase);
@@ -273,7 +320,7 @@ test('bosses gain attack phases as HP falls and their defeat unlocks the next st
 });
 
 test('pausing freezes wave clocks, projectiles, pickups and boss intermission', () => {
-  const h = harness(); h.start(); h.state.player.inv = Infinity;
+  const h = harness({mode:'endless'}); h.start(); h.state.player.inv = Infinity;
   h.api.createPickup('plasma', 80, 100); h.api.shoot(); h.advance(.2);
   const snapshot = () => JSON.stringify({ gameTime: h.state.gameTime, stageTime: h.state.stageTime,
     shots: h.state.shots, hostileShots: h.state.hostileShots, enemies: h.state.enemies, pickups: h.state.pickups });
@@ -295,7 +342,7 @@ test('restart resets stage clocks, inventory, projectiles, boss and input', () =
   assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
   assert.equal(h.state.score, 0); assert.equal(h.state.lives, startingLives); assert.equal(h.state.weapon, 'laser');
   assert.equal(h.state.inventory.laser, 1);
-  for (const type of ['spread', 'plasma', 'rockets', 'beam']) assert.equal(h.state.inventory[type], 0);
+  for (const type of ['spread','rockets']) assert.equal(h.state.inventory[type],0);for (const type of ['plasma','beam']) assert.equal(h.state.inventory[type],1,'Found weapons persist across sorties');
   for (const name of ['enemies', 'shots', 'hostileShots', 'pickups']) assert.equal(h.state[name].length, 0, name);
   assert.equal(h.state.fireCount, 0); assert.equal(h.state.keyCount, 0); assert.equal(h.state.movePointerId, null);
   assert.equal(h.frames.length, 1);
