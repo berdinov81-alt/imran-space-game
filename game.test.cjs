@@ -6,9 +6,9 @@ const vm = require('node:vm');
 const root = __dirname;
 
 // Test the shipped loop and handlers without exposing a test API to players.
-function harness({ width = 390, height = 844, storageBlocked = false, mode = 'campaign', autoFire = false } = {}) {
-  const elements = new Map(), frames = [], events = new Map();
-  let clock = 1000, seed = 810011, created = 0;
+function harness({ width = 390, height = 844, storageBlocked = false, mode = 'campaign', autoFire = false, randomSeed = 810011, saved = {} } = {}) {
+  const elements = new Map(), frames = [], events = new Map(), storageValues = new Map(Object.entries(saved));
+  let clock = 1000, seed = randomSeed, created = 0;
   function element(id) {
     if (elements.has(id)) return elements.get(id);
     const listeners = new Map(), classes = new Set(), attributes = new Map();
@@ -66,8 +66,8 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
     innerWidth: width, innerHeight: height, devicePixelRatio: 3,
     performance: { now: () => clock },
     localStorage: {
-      getItem() { if (storageBlocked) throw Error('storage blocked'); return null; },
-      setItem() { if (storageBlocked) throw Error('storage blocked'); }
+      getItem(key) { if (storageBlocked) throw Error('storage blocked'); return storageValues.get(key) ?? null; },
+      setItem(key, value) { if (storageBlocked) throw Error('storage blocked'); storageValues.set(key, String(value)); }
     },
     requestAnimationFrame: fn => frames.push(fn),
     addEventListener(type, fn) { if (!events.has(type)) events.set(type, []); events.get(type).push(fn); }
@@ -77,11 +77,11 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
   const instrumented = source.replace(/\}\)\(\);\s*$/, `
     globalThis.inspection = {
       get state() { return { running, paused, gameTime, level, stageTime, stageMode, boss,
-        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives, runMode, mission, world, missionDamage, salvageTaken, eliteKills, special, hazards, stormWarnings, formationIndex,
+        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives, runMode, mission, world, missionDamage, salvageTaken, eliteKills, special, hazards, stormWarnings, formationIndex, formationPlans, lastWeaponDrop, nextWeaponDrop, weaponDropCount, parts, rings, floaters,
         movePointerId, fireCount: fireTouches.size, keyCount: keys.size }; },
       reset, startGame, update, shoot, createEnemy, createPickup, beginBoss,
       damageEnemy, damageBoss, damagePlayer, collectPickup, defeatBoss, setWeapon, setPaused, clearInput, resize,
-      enemyTypes, MAX_POWER, waveDuration, activateSpecial, spawnFormation, updateStorm, bossWarning, bossAttack, profile, returnToLobby,
+      enemyTypes, MAX_POWER, waveDuration, activateSpecial, spawnFormation, enemyCap, spawnWeaponDrop, updateStorm, bossWarning, bossAttack, profile, returnToLobby,
       configureMission: id => { selectedMission=id;profile.state.unlocked=id;profile.state.selected=id;level=id;changeMission(id); },
       endGame: () => endGame(), setScore: value => { score = value; }
     };
@@ -89,7 +89,8 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
   assert.notEqual(instrumented, source, 'Game must retain its private IIFE boundary for test instrumentation');
   vm.runInContext(instrumented, sandbox);
   return {
-    sandbox, element, frames, api: sandbox.inspection,
+    sandbox, element, frames, storageValues, api: sandbox.inspection,
+    random(value) { seededMath.random = () => value; },
     get state() { return sandbox.inspection.state; },
     emit(type, props = {}) { for (const fn of events.get(type) || []) fn({ preventDefault() {}, ...props }); },
     visibility(hidden) { document.hidden = hidden; for (const fn of events.get('document:visibilitychange') || []) fn(); },
@@ -131,14 +132,58 @@ test('automatic fire works without a held finger, and defensive pulse has a real
 });
 
 test('all 30 missions use their own timers, worlds, formation and functioning boss patterns',()=>{
- const h=harness();for(let id=1;id<=30;id++){h.api.configureMission(id);h.start();h.state.player.inv=Infinity;
+ const h=harness(),commanders=new Set();let previousHp=0;
+ for(let id=1;id<=30;id++){h.api.configureMission(id);h.start();h.state.player.inv=Infinity;
  assert.equal(h.state.level,id);assert.equal(h.state.mission.id,id);assert.equal(h.state.world.name,h.sandbox.ImranCampaign.worlds[Math.floor((id-1)/5)].name);
  assert.ok(h.api.waveDuration()>=54);h.api.spawnFormation();assert.ok(h.state.enemies.length>=2);
- h.api.beginBoss();const b=h.state.boss;b.entry=0;h.api.damageBoss(b.maxHp*.55);
+ h.api.beginBoss();const b=h.state.boss;commanders.add(b.name);assert.ok(b.maxHp>previousHp,'Mission '+id+' boss must be tougher than its predecessor');previousHp=b.maxHp;b.entry=0;h.api.damageBoss(b.maxHp*.55);
  for(let i=0;i<b.patterns.length;i++){h.api.bossWarning();h.api.bossAttack();h.tick();}
  h.api.damageBoss(b.maxHp);assert.equal(h.state.running,false);assert.ok(h.api.profile.state.missions[id]);assert.equal(h.frames.length,1);
  }
- assert.equal(Object.keys(h.api.profile.state.missions).length,30);assert.equal(h.api.profile.state.unlocked,30);
+ assert.equal(commanders.size,30);assert.equal(Object.keys(h.api.profile.state.missions).length,30);assert.equal(h.api.profile.state.unlocked,30);
+});
+
+test('group, semicircle and horde formations have different staged geometry',()=>{
+ const snapshots={};
+ for(const kind of ['group','semicircle','horde']){
+  const h=harness();h.start();h.api.spawnFormation(kind);
+  const entries=Array.from(h.state.enemies.filter(e=>e.entry?.kind===kind),e=>e.entry);
+  assert.ok(entries.length>=3,kind+' has a visible squad');
+  assert.ok(entries.every(e=>[e.startX,e.startY,e.targetX,e.targetY,e.delay,e.duration].every(Number.isFinite)),kind+' finite route coordinates');
+  assert.ok(entries.every(e=>e.startY<0||e.startX<0||e.startX>390),kind+' enters from outside the play area');
+  snapshots[kind]=entries;
+  h.api.setPaused(true);const before=JSON.stringify(h.state.enemies.map(e=>({x:e.x,y:e.y,entry:e.entry})));h.advance(3);
+  assert.equal(JSON.stringify(h.state.enemies.map(e=>({x:e.x,y:e.y,entry:e.entry}))),before,kind+' route freezes while paused');
+ }
+ const ring=snapshots.semicircle.sort((a,b)=>a.targetX-b.targetX),middle=ring[Math.floor(ring.length/2)];
+ assert.ok(new Set(ring.map(e=>Math.round(e.targetX))).size>=3);
+ assert.ok(new Set(ring.map(e=>Math.round(e.targetY))).size>=2,'Semicircle must curve rather than form one horizontal row');
+ assert.ok(Math.abs((ring[0].targetX+ring.at(-1).targetX)/2-middle.targetX)<35,'Semicircle spans both sides of its centre');
+ const group=snapshots.group;assert.ok(Math.max(...group.map(e=>e.targetX))-Math.min(...group.map(e=>e.targetX))<390*.75,'Group remains a compact squad');
+ assert.ok(snapshots.horde.length>group.length,'A horde has more ships than a small squad');
+ assert.ok(new Set(snapshots.horde.map(e=>e.delay)).size>=3,'Horde entrance is staggered');
+});
+
+test('entering squads cannot attack before their route and repeated formation requests stay bounded',()=>{
+ const h=harness();h.api.configureMission(30);h.start();h.state.player.inv=Infinity;h.advance(10);
+ h.state.enemies.length=0;h.state.hostileShots.length=0;h.api.spawnFormation('group');
+ const group=h.state.enemies.filter(e=>e.entry?.kind==='group');assert.ok(group.length>=3);for(const enemy of group)enemy.fire=0;
+ h.api.update(.1);assert.equal(h.state.hostileShots.length,0,'Enemies do not shoot while their entrance begins');
+ for(let i=0;i<100;i++)h.api.spawnFormation('horde');
+ assert.ok(h.state.enemies.length<=h.api.enemyCap());assert.ok(h.state.formationPlans.length<=12,'Formation history stays bounded');
+ h.advance(3);assert.ok(h.state.enemies.length<=h.api.enemyCap());
+});
+
+test('a bounded late-stage firefight keeps formations, projectiles and effects finite',()=>{
+ const h=harness({autoFire:true,randomSeed:123456});h.api.configureMission(30);h.start();h.state.player.inv=Infinity;
+ h.state.inventory.plasma=5;h.api.setWeapon('plasma');h.api.profile.state.upgrades.reactor=5;h.api.profile.state.upgrades.wingman=4;
+ for(let frame=0;frame<30*60;frame++){
+  if(frame%120===0)h.api.spawnFormation(frame%240===0?'horde':'semicircle');h.tick();
+  assert.ok(h.state.enemies.length<=h.api.enemyCap());assert.ok(h.state.shots.length<240);assert.ok(h.state.hostileShots.length<=72);
+  assert.ok(h.state.parts.length<=260);assert.ok(h.state.pickups.length<120);assert.ok(h.state.formationPlans.length<=12);
+  for(const item of [...h.state.enemies,...h.state.shots,...h.state.hostileShots,...h.state.pickups])assert.ok(Number.isFinite(item.x)&&Number.isFinite(item.y));
+ }
+ assert.equal(h.state.running,true);assert.equal(h.frames.length,1);assert.ok(h.state.score>0,'Weapons really hit the incoming squads');
 });
 
 test('ion storm warns before creating a hazard and pauses safely',()=>{
@@ -261,13 +306,33 @@ test('falling weapon pods can be collected and unlock the weapon immediately', (
   h.api.setWeapon('laser'); h.emit('keydown', { code: 'Digit2', key: '2' }); assert.equal(h.state.weapon, 'spread');
 });
 
-test('guaranteed early weapons arrive even without killing ships', () => {
+test('the first weapon introduction is occasional and later pods obey a strict cooldown and run budget', () => {
   const h = harness(); h.start(); h.state.player.inv = Infinity;
-  h.advance(6.2);
-  assert.ok(h.state.pickups.some(p => p.type === 'spread' || p.t === 'spread'), 'Early spread pickup');
-  h.state.pickups.length = 0;
-  h.advance(16.2);
-  assert.ok(h.state.pickups.some(p => p.type === 'plasma' || p.t === 'plasma'), 'Guaranteed first-stage plasma pickup');
+  h.advance(10);
+  assert.equal(h.state.pickups.filter(p => ['laser','spread','plasma','rockets','beam'].includes(p.type)).length,0,'No weapon showers every few seconds');
+  h.advance(3);
+  assert.ok(h.state.pickups.some(p=>p.type==='spread'),'Mission one introduces a collectible weapon in reasonable time');
+  assert.equal(h.state.weaponDropCount,1);
+  const first=h.state.lastWeaponDrop;
+  assert.equal(h.api.spawnWeaponDrop('plasma',120,90),null,'Immediate repeated drop is blocked');
+  h.api.setPaused(true);h.advance(40);assert.equal(h.state.lastWeaponDrop,first);assert.equal(h.state.weaponDropCount,1);
+  const late=harness();late.api.configureMission(30);late.start();late.state.player.inv=Infinity;late.advance(21);
+  assert.ok(late.api.spawnWeaponDrop('plasma',120,90));const firstLate=late.state.lastWeaponDrop;
+  late.advance(27);assert.equal(late.api.spawnWeaponDrop('beam',120,90),null);
+  late.advance(2);assert.ok(late.api.spawnWeaponDrop('beam',120,90));assert.ok(late.state.lastWeaponDrop-firstLate>=28);
+  late.advance(29);assert.ok(late.api.spawnWeaponDrop('rockets',120,90));assert.equal(late.state.weaponDropCount,3);
+  late.advance(40);assert.equal(late.api.spawnWeaponDrop('laser',120,90),null,'Long fights cannot exceed the pod budget');
+});
+
+test('enemy kill rewards keep weapon pods rare and cannot bypass drop limits',()=>{
+ const h=harness();h.api.configureMission(30);h.start();h.state.player.inv=Infinity;h.advance(10);h.random(0);
+ const kill=()=>{const enemy=h.api.createEnemy('scout');assert.ok(enemy);h.api.damageEnemy(enemy,enemy.hp+1);h.api.update(0);h.state.pickups.length=0;};
+ for(let i=0;i<20;i++)kill();assert.equal(h.state.weaponDropCount,0,'No random weapons in the opening grace period');
+ h.advance(11);h.random(.99999);for(let i=0;i<100;i++)kill();assert.equal(h.state.weaponDropCount,0,'Ordinary rewards usually omit weapon pods');
+ h.random(0);for(let i=0;i<100;i++)kill();assert.equal(h.state.weaponDropCount,1,'Even a lucky kill burst respects cooldown');
+ h.advance(29);for(let i=0;i<50;i++)kill();assert.equal(h.state.weaponDropCount,2);
+ h.advance(29);for(let i=0;i<50;i++)kill();assert.equal(h.state.weaponDropCount,3);
+ h.advance(29);for(let i=0;i<50;i++)kill();assert.equal(h.state.weaponDropCount,3,'Enemy kills cannot exceed the run budget');
 });
 
 test('repeated weapon pickups improve firepower and stop at a finite upgrade cap', () => {
@@ -294,6 +359,37 @@ test('every collected weapon fires and spread creates an angled volley', () => {
   assert.ok(volleys.spread.length > volleys.laser.length);
   assert.ok(volleys.spread.some(shot => shot.vx < 0));
   assert.ok(volleys.spread.some(shot => shot.vx > 0));
+});
+
+test('all five power tiers improve real volleys for every weapon',()=>{
+ for(const type of ['laser','spread','plasma','rockets','beam']){
+  const h=harness();h.start();h.state.player.inv=Infinity;assert.equal(h.api.MAX_POWER,5);
+  if(type!=='laser')h.pickup(type);const volleys=[];
+  for(let rank=1;rank<=5;rank++){
+   if(rank>1)h.pickup(type);assert.equal(h.state.inventory[type],rank,type+' rank '+rank);
+   h.advance(.8);h.state.shots.length=0;assert.equal(h.api.shoot(),true);
+   const shots=Array.from(h.state.shots);assert.ok(shots.length>0&&shots.every(s=>s.d>0));
+   volleys.push({damage:shots.reduce((sum,s)=>sum+s.d,0),count:shots.length,
+    blast:Math.max(...shots.map(s=>s.blast||0)),pierce:Math.max(...shots.map(s=>s.pierce)),radius:Math.max(...shots.map(s=>s.r))});
+  }
+  for(let rank=1;rank<5;rank++){
+   assert.ok(volleys[rank].damage>volleys[rank-1].damage,type+' damage must improve at rank '+(rank+1));
+   if(type==='laser'||type==='spread'||type==='rockets')assert.ok(volleys[rank].count>=volleys[rank-1].count,type+' must not lose projectiles on upgrade');
+   if(type==='plasma')assert.ok(volleys[rank].blast>volleys[rank-1].blast,'Plasma blast expands with power');
+   if(type==='beam')assert.ok(volleys[rank].pierce>volleys[rank-1].pierce,'Beam pierces more enemies with power');
+  }
+  h.pickup(type);assert.equal(h.state.inventory[type],5);
+ }
+});
+
+test('earned weapon power survives a new session while old arsenal saves remain usable',()=>{
+ const h=harness();h.start();for(let i=0;i<4;i++)h.pickup('laser');h.pickup('plasma');h.pickup('plasma');
+ const next=harness({saved:Object.fromEntries(h.storageValues)});next.start();
+ assert.equal(next.state.inventory.laser,5);assert.equal(next.state.inventory.plasma,2);
+ const old={version:3,credits:123,unlocked:1,selected:1,missions:{},arsenal:{laser:true,spread:true,plasma:true,rockets:false,beam:false},settings:{autoFire:false,difficulty:'normal'}};
+ const migrated=harness({saved:{'imranStarDefender.v3':JSON.stringify(old)}});migrated.start();
+ assert.equal(migrated.api.profile.state.credits,123);assert.equal(migrated.state.inventory.laser,1);
+ assert.equal(migrated.state.inventory.spread,1);assert.equal(migrated.state.inventory.plasma,1);assert.equal(migrated.state.inventory.rockets,0);
 });
 
 test('score cannot skip a stage and the wave ends with a mandatory boss', () => {
@@ -422,4 +518,69 @@ test('ships surviving splash retain damage and award points only on a later kill
   h.state.shots.push({ x: 100, y: 180, vx: 0, vy: 0, r: 5, d: 1, t: 'laser', hit: new Set(), pierce: 1, life: 2 });
   h.api.update(0); assert.equal(h.state.enemies.length, 0); assert.ok(h.state.score > 0);
   const score = h.state.score; h.api.update(0); assert.equal(h.state.score, score);
+});
+
+test('formation routes arrive at their authored geometry, hold, release and shoot',()=>{
+ for(const kind of ['group','semicircle','pincer','horde','wedge','columns']){
+  const h=harness();h.start();h.state.player.inv=Infinity;h.api.spawnFormation(kind);
+  const squad=h.state.enemies.filter(e=>e.entry?.kind===kind);
+  const first=squad[0],e=first.entry,initial=first.y;
+  h.api.update(.1);assert.ok(first.y>initial,kind+' route actually advances');
+  assert.equal(e.elapsed,.1);h.api.update(e.duration-.1+.03);
+  assert.ok(Math.abs(first.x-e.targetX)<.1&&Math.abs(first.y-e.targetY)<3,kind+' arrives at designated point');
+  assert.equal(e.released,false,kind+' holds formation before the sortie');
+  h.api.update(e.hold+.1);assert.equal(e.released,true,kind+' releases from formation');
+  const before=first.y;h.api.update(.1);assert.ok(first.y>before,kind+' exits towards the player');
+ }
+});
+
+test('all authored attack kinds deliver a distinct real projectile or hazard pattern',()=>{
+ const signatures=new Set(),kinds=['fan','aim','ring','minions','cross','lanes','needles','sweep','wings','rake','barrage','lattice','nova','spiral'];
+ for(const kind of kinds){
+  const h=harness();h.api.configureMission(30);h.start();h.state.player.inv=Infinity;h.api.beginBoss();const b=h.state.boss;
+  b.entry=0;b.patterns=[kind];b.phase=2;b.fire=100;
+  h.api.update(.05);h.api.bossWarning();const warning=b.warning;assert.equal(warning.kind,kind);
+  assert.ok(warning.total>=.68,'Every pattern gives a reaction window');h.api.bossAttack();
+  const pending=b.queued.length;
+  assert.ok(h.state.hostileShots.length||pending||h.state.hazards.length||h.state.enemies.length,kind+' actually attacks');
+  for(let i=0;i<80;i++)h.api.update(.01);
+  assert.equal(b.queued.length,0,kind+' scheduled bursts fire instead of remaining inert');
+  assert.ok(h.state.hostileShots.length<=72);assert.ok(h.state.enemies.length<=h.api.enemyCap());
+  const signature=JSON.stringify({shots:h.state.hostileShots.map(s=>[Math.round(s.vx),Math.round(s.vy),s.r]),pending,enemies:h.state.enemies.map(e=>e.type),hazards:h.state.hazards.map(q=>[q.x,q.w])});
+  assert.ok(!signatures.has(signature),kind+' must not silently reuse a fallback attack');signatures.add(signature);
+ }
+});
+
+test('commanders fly distinct finite routes and late bosses enter a third phase',()=>{
+ const paths=new Set();
+ for(let id=1;id<=30;id++){
+  const h=harness();h.api.configureMission(id);h.start();h.state.player.inv=Infinity;h.api.beginBoss();const b=h.state.boss;
+  const coordinates=[];
+  for(let i=0;i<200;i++){h.api.update(.03);if(i%20===0)coordinates.push([Math.round(b.x*10)/10,Math.round(b.y*10)/10]);assert.ok(Number.isFinite(b.x)&&Number.isFinite(b.y))}
+  assert.ok(new Set(coordinates.map(p=>p[0])).size>2,'Boss '+id+' really moves');
+  const signature=JSON.stringify(coordinates);assert.ok(!paths.has(signature),'Boss '+id+' flies its own route');paths.add(signature);
+  if(b.phases===3){h.api.damageBoss(b.maxHp*.76);assert.equal(b.phase,3,'Late commander has a third combat phase')}
+ }
+});
+
+test('top weapon tiers really create fragments, splash, steering and ricochet',()=>{
+ const plasma=harness();plasma.start();plasma.state.inventory.plasma=5;plasma.api.setWeapon('plasma');plasma.api.shoot();
+ const ball=plasma.state.shots[0],victim=plasma.api.createEnemy('armored');victim.x=ball.x;victim.y=ball.y-20;victim.vx=0;victim.vy=0;plasma.api.update(.035);
+ assert.ok(plasma.state.shots.some(s=>s.color==='#e6b0ff'),'LV5 plasma creates moving fragmentation shots');
+ const rockets=harness();rockets.start();rockets.state.inventory.rockets=5;rockets.api.setWeapon('rockets');rockets.api.shoot();
+ const rocket=rockets.state.shots[2],target=rockets.api.createEnemy('armored'),nearby=rockets.api.createEnemy('armored');
+ target.x=rocket.x;target.y=rocket.y-14;target.vx=target.vy=0;nearby.x=target.x+48;nearby.y=target.y;nearby.vx=nearby.vy=0;const hp=nearby.hp;
+ rockets.api.update(.035);assert.ok(nearby.hp<hp,'LV5 rocket explosion damages a nearby ship');
+ const spread=harness();spread.start();spread.state.inventory.spread=5;spread.api.setWeapon('spread');spread.api.shoot();
+ const orb=spread.state.shots[0];orb.x=2;orb.y=450;orb.vx=-400;spread.api.update(.035);assert.ok(orb.vx>0&&orb.bounce===0,'Legendary spread ricochets once off a side');
+});
+
+test('endless campaign keeps growing after the thirtieth commander',()=>{
+ const h=harness({mode:'endless'});h.start();h.state.player.inv=Infinity;
+ let previous=0;
+ for(let stage=1;stage<=32;stage++){
+  assert.equal(h.state.level,stage);h.api.beginBoss();assert.ok(h.state.boss.maxHp>previous,'Endless stage '+stage+' does not reset boss difficulty');previous=h.state.boss.maxHp;
+  h.api.damageBoss(previous);assert.equal(h.state.stageMode,'intermission');
+  h.api.update(3.5);assert.equal(h.state.running,true);assert.ok(h.state.enemies.length<=h.api.enemyCap());
+ }
 });

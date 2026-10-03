@@ -1,6 +1,6 @@
 'use strict';
-const CACHE='imran-v3.0.1';
-const FILES=['./','index.html','privacy.html','THIRD_PARTY_NOTICES.txt','campaign.js','lobby.js','game.js','native.js','styles.css','menu-v3.png','pilot-v2.png','nebula-v2.png','aliens-v2.png','face.jpg','app-icon.svg','app-icon-192.png','app-icon-512.png','manifest.webmanifest'];
+const CACHE='imran-v4.0.0';
+const FILES=['./','index.html','privacy.html','THIRD_PARTY_NOTICES.txt','campaign.js','lobby.js','game.js','native.js','styles.css','menu-v3.png','pilot-v2.png','nebula-v2.png','aliens-v2.png','bosses-v4.png','face.jpg','app-icon.svg','app-icon-192.png','app-icon-512.png','manifest.webmanifest'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('imran-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{const request=event.request,url=new URL(request.url);if(request.method!=='GET'||url.origin!==self.location.origin||!url.pathname.startsWith(new URL(self.registration.scope).pathname))return;event.respondWith((async()=>{const cache=await caches.open(CACHE),cached=await cache.match(request,{ignoreSearch:true}),image=/\.(png|jpg|svg)$/.test(url.pathname);if(image&&cached)return cached;try{const response=await fetch(request);if(response.ok)await cache.put(request,response.clone());return response}catch(error){if(cached)return cached;if(request.mode==='navigate')return await cache.match('index.html');throw error}})())});

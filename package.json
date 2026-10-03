@@ -1,6 +1,6 @@
 {
   "name": "imran-space-game",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "scripts": {
     "test": "node --test game.test.cjs campaign.test.cjs",
