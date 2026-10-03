@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const root = __dirname;
 
 // Test the shipped loop and handlers without exposing a test API to players.
-function harness({ width = 390, height = 844, storageBlocked = false, mode = 'campaign', autoFire = false, randomSeed = 810011, saved = {} } = {}) {
+function harness({ width = 390, height = 844, storageBlocked = false, mode = 'campaign', autoFire = false, randomSeed = 810011, systemLowMotion = false, saved = {} } = {}) {
   const elements = new Map(), frames = [], events = new Map(), storageValues = new Map(Object.entries(saved));
   let clock = 1000, seed = randomSeed, created = 0;
   function element(id) {
@@ -64,7 +64,7 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
   const sandbox = {
     document, CustomEvent: class { constructor(type, options={}){this.type=type;this.detail=options.detail;} }, Math: seededMath, Image: class { complete = true; naturalWidth = 256; naturalHeight = 256; },
     innerWidth: width, innerHeight: height, devicePixelRatio: 3,
-    performance: { now: () => clock },
+    performance: { now: () => clock }, matchMedia: () => ({matches:systemLowMotion}),
     localStorage: {
       getItem(key) { if (storageBlocked) throw Error('storage blocked'); return storageValues.get(key) ?? null; },
       setItem(key, value) { if (storageBlocked) throw Error('storage blocked'); storageValues.set(key, String(value)); }
@@ -77,11 +77,11 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
   const instrumented = source.replace(/\}\)\(\);\s*$/, `
     globalThis.inspection = {
       get state() { return { running, paused, gameTime, level, stageTime, stageMode, boss,
-        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives, runMode, mission, world, missionDamage, salvageTaken, eliteKills, special, hazards, stormWarnings, formationIndex, formationPlans, lastWeaponDrop, nextWeaponDrop, weaponDropCount, parts, rings, floaters,
+        player, target, weapon, inventory, enemies, shots, hostileShots, pickups, score, lives, runMode, mission, world, missionDamage, salvageTaken, eliteKills, special, hazards, stormWarnings, shotsFired, overdrive, boostTier, boostDropCount, lastBoostDrop, arcs, fireworks, victoryTime, formationIndex, formationPlans, lastWeaponDrop, nextWeaponDrop, weaponDropCount, parts, rings, floaters,
         movePointerId, fireCount: fireTouches.size, keyCount: keys.size }; },
       reset, startGame, update, shoot, createEnemy, createPickup, beginBoss,
       damageEnemy, damageBoss, damagePlayer, collectPickup, defeatBoss, setWeapon, setPaused, clearInput, resize,
-      enemyTypes, MAX_POWER, waveDuration, activateSpecial, spawnFormation, enemyCap, spawnWeaponDrop, updateStorm, bossWarning, bossAttack, profile, returnToLobby,
+      dropBoost, chainDischarge, fireRate, animateLobby, enemyTypes, MAX_POWER, waveDuration, activateSpecial, spawnFormation, enemyCap, spawnWeaponDrop, updateStorm, bossWarning, bossAttack, profile, returnToLobby,
       configureMission: id => { selectedMission=id;profile.state.unlocked=id;profile.state.selected=id;level=id;changeMission(id); },
       endGame: () => endGame(), setScore: value => { score = value; }
     };
@@ -115,11 +115,11 @@ test('release uses local resources, the original portrait, and all five weapon c
   assert.doesNotMatch(html, /skybridge|oaiusercontent|__EMBEDDED_IMAGE__/i);
   assert.ok(fs.statSync(path.join(root, 'face.jpg')).size > 0);
   assert.ok(fs.existsSync(path.join(root, '.nojekyll')));
-  for (const type of ['laser', 'spread', 'plasma', 'rockets', 'beam']) assert.match(html, new RegExp('data-w="' + type + '"'));
+  for (const type of ['laser', 'spread', 'plasma', 'arc', 'beam']) assert.match(html, new RegExp('data-w="' + type + '"'));
 });
 
 test('campaign victory awards a mission once, persists medals and unlocks only the next mission',()=>{
- const h=harness();h.start();h.state.player.inv=Infinity;h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);
+ const h=harness();h.start();h.state.player.inv=Infinity;h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);h.advance(4.7);
  assert.equal(h.state.running,false);assert.equal(h.api.profile.state.unlocked,2);assert.ok(h.api.profile.state.missions[1].stars>=1);
  const credits=h.api.profile.state.credits;h.api.defeatBoss();h.api.endGame();assert.equal(h.api.profile.state.credits,credits);
  h.element('nextMission').emit('click');assert.equal(h.state.level,2);assert.equal(h.state.running,true);assert.equal(h.state.gameTime,0);
@@ -138,7 +138,7 @@ test('all 30 missions use their own timers, worlds, formation and functioning bo
  assert.ok(h.api.waveDuration()>=54);h.api.spawnFormation();assert.ok(h.state.enemies.length>=2);
  h.api.beginBoss();const b=h.state.boss;commanders.add(b.name);assert.ok(b.maxHp>previousHp,'Mission '+id+' boss must be tougher than its predecessor');previousHp=b.maxHp;b.entry=0;h.api.damageBoss(b.maxHp*.55);
  for(let i=0;i<b.patterns.length;i++){h.api.bossWarning();h.api.bossAttack();h.tick();}
- h.api.damageBoss(b.maxHp);assert.equal(h.state.running,false);assert.ok(h.api.profile.state.missions[id]);assert.equal(h.frames.length,1);
+ h.api.damageBoss(b.maxHp);h.advance(4.7);assert.equal(h.state.running,false);assert.ok(h.api.profile.state.missions[id]);assert.equal(h.frames.length,1);
  }
  assert.equal(commanders.size,30);assert.equal(Object.keys(h.api.profile.state.missions).length,30);assert.equal(h.api.profile.state.unlocked,30);
 });
@@ -284,7 +284,7 @@ test('keyboard movement, key release, shooting, pause and blur remain responsive
 
 test('locked weapons cannot be selected by the bar, keyboard, or game setter', () => {
   const h = harness(); h.start();
-  for (const [type, key] of [['spread', '2'], ['plasma', '3'], ['rockets', '4'], ['beam', '5']]) {
+  for (const [type, key] of [['spread', '2'], ['plasma', '3'], ['arc', '4'], ['beam', '5']]) {
     assert.equal(h.state.inventory[type], 0);
     assert.equal(h.weaponButton(type).disabled, true);
     h.pressWeapon(type); assert.equal(h.state.weapon, 'laser');
@@ -309,7 +309,7 @@ test('falling weapon pods can be collected and unlock the weapon immediately', (
 test('the first weapon introduction is occasional and later pods obey a strict cooldown and run budget', () => {
   const h = harness(); h.start(); h.state.player.inv = Infinity;
   h.advance(10);
-  assert.equal(h.state.pickups.filter(p => ['laser','spread','plasma','rockets','beam'].includes(p.type)).length,0,'No weapon showers every few seconds');
+  assert.equal(h.state.pickups.filter(p => ['laser','spread','plasma','arc','beam'].includes(p.type)).length,0,'No weapon showers every few seconds');
   h.advance(3);
   assert.ok(h.state.pickups.some(p=>p.type==='spread'),'Mission one introduces a collectible weapon in reasonable time');
   assert.equal(h.state.weaponDropCount,1);
@@ -320,7 +320,7 @@ test('the first weapon introduction is occasional and later pods obey a strict c
   assert.ok(late.api.spawnWeaponDrop('plasma',120,90));const firstLate=late.state.lastWeaponDrop;
   late.advance(27);assert.equal(late.api.spawnWeaponDrop('beam',120,90),null);
   late.advance(2);assert.ok(late.api.spawnWeaponDrop('beam',120,90));assert.ok(late.state.lastWeaponDrop-firstLate>=28);
-  late.advance(29);assert.ok(late.api.spawnWeaponDrop('rockets',120,90));assert.equal(late.state.weaponDropCount,3);
+  late.advance(29);assert.ok(late.api.spawnWeaponDrop('arc',120,90));assert.equal(late.state.weaponDropCount,3);
   late.advance(40);assert.equal(late.api.spawnWeaponDrop('laser',120,90),null,'Long fights cannot exceed the pod budget');
 });
 
@@ -349,7 +349,7 @@ test('repeated weapon pickups improve firepower and stop at a finite upgrade cap
 test('every collected weapon fires and spread creates an angled volley', () => {
   const h = harness(); h.start(); h.state.player.inv = Infinity;
   const volleys = {};
-  for (const type of ['laser', 'spread', 'plasma', 'rockets', 'beam']) {
+  for (const type of ['laser', 'spread', 'plasma', 'arc', 'beam']) {
     if (type !== 'laser') h.pickup(type);
     h.api.setWeapon(type); h.advance(1); h.state.shots.length = 0; h.api.shoot();
     volleys[type] = Array.from(h.state.shots);
@@ -362,7 +362,7 @@ test('every collected weapon fires and spread creates an angled volley', () => {
 });
 
 test('all five power tiers improve real volleys for every weapon',()=>{
- for(const type of ['laser','spread','plasma','rockets','beam']){
+ for(const type of ['laser','spread','plasma','arc','beam']){
   const h=harness();h.start();h.state.player.inv=Infinity;assert.equal(h.api.MAX_POWER,5);
   if(type!=='laser')h.pickup(type);const volleys=[];
   for(let rank=1;rank<=5;rank++){
@@ -374,7 +374,7 @@ test('all five power tiers improve real volleys for every weapon',()=>{
   }
   for(let rank=1;rank<5;rank++){
    assert.ok(volleys[rank].damage>volleys[rank-1].damage,type+' damage must improve at rank '+(rank+1));
-   if(type==='laser'||type==='spread'||type==='rockets')assert.ok(volleys[rank].count>=volleys[rank-1].count,type+' must not lose projectiles on upgrade');
+   if(type==='laser'||type==='spread'||type==='arc')assert.ok(volleys[rank].count>=volleys[rank-1].count,type+' must not lose projectiles on upgrade');
    if(type==='plasma')assert.ok(volleys[rank].blast>volleys[rank-1].blast,'Plasma blast expands with power');
    if(type==='beam')assert.ok(volleys[rank].pierce>volleys[rank-1].pierce,'Beam pierces more enemies with power');
   }
@@ -386,10 +386,10 @@ test('earned weapon power survives a new session while old arsenal saves remain 
  const h=harness();h.start();for(let i=0;i<4;i++)h.pickup('laser');h.pickup('plasma');h.pickup('plasma');
  const next=harness({saved:Object.fromEntries(h.storageValues)});next.start();
  assert.equal(next.state.inventory.laser,5);assert.equal(next.state.inventory.plasma,2);
- const old={version:3,credits:123,unlocked:1,selected:1,missions:{},arsenal:{laser:true,spread:true,plasma:true,rockets:false,beam:false},settings:{autoFire:false,difficulty:'normal'}};
+ const old={version:3,credits:123,unlocked:1,selected:1,missions:{},arsenal:{laser:true,spread:true,plasma:true,arc:false,beam:false},settings:{autoFire:false,difficulty:'normal'}};
  const migrated=harness({saved:{'imranStarDefender.v3':JSON.stringify(old)}});migrated.start();
  assert.equal(migrated.api.profile.state.credits,123);assert.equal(migrated.state.inventory.laser,1);
- assert.equal(migrated.state.inventory.spread,1);assert.equal(migrated.state.inventory.plasma,1);assert.equal(migrated.state.inventory.rockets,0);
+ assert.equal(migrated.state.inventory.spread,1);assert.equal(migrated.state.inventory.plasma,1);assert.equal(migrated.state.inventory.arc,0);
 });
 
 test('score cannot skip a stage and the wave ends with a mandatory boss', () => {
@@ -407,11 +407,11 @@ test('bosses gain attack phases as HP falls and their defeat unlocks the next st
   h.api.damageBoss(first.maxHp * .55); h.api.update(0);
   assert.ok(first.hp < first.maxHp * .5); assert.ok(first.phase > firstPhase);
   const scoreBefore = h.state.score;
-  h.api.damageBoss(first.maxHp); assert.equal(h.state.stageMode, 'intermission'); assert.equal(h.state.level, 1);
+  h.api.damageBoss(first.maxHp); assert.equal(h.state.stageMode, 'victory'); assert.equal(h.state.level, 1);
   assert.ok(h.state.score > scoreBefore);
   const defeatScore = h.state.score; h.api.defeatBoss(); assert.equal(h.state.score, defeatScore, 'Boss defeat must not be rewarded twice');
   h.advance(2); assert.equal(h.state.level, 1);
-  h.advance(1.6); assert.equal(h.state.level, 2); assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
+  h.advance(3.7); assert.equal(h.state.level, 2); assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
   h.api.beginBoss(); assert.ok(h.state.boss.maxHp > first.maxHp, 'Later-stage boss must be tougher');
 });
 
@@ -423,8 +423,8 @@ test('pausing freezes wave clocks, projectiles, pickups and boss intermission', 
   h.api.setPaused(true); const before = snapshot(); h.advance(5); assert.equal(snapshot(), before);
   h.api.setPaused(false); const resume = h.state.gameTime; h.tick(); assert.ok(h.state.gameTime - resume < .04);
   h.api.beginBoss(); h.api.damageBoss(h.state.boss.maxHp); h.api.setPaused(true);
-  h.advance(10); assert.equal(h.state.level, 1); assert.equal(h.state.stageMode, 'intermission');
-  h.api.setPaused(false); h.advance(3.6); assert.equal(h.state.level, 2);
+  h.advance(10); assert.equal(h.state.level, 1); assert.equal(h.state.stageMode, 'victory');
+  h.api.setPaused(false); h.advance(5.7); assert.equal(h.state.level, 2);
 });
 
 test('restart resets stage clocks, inventory, projectiles, boss and input', () => {
@@ -438,7 +438,7 @@ test('restart resets stage clocks, inventory, projectiles, boss and input', () =
   assert.equal(h.state.stageMode, 'wave'); assert.equal(h.state.boss, null);
   assert.equal(h.state.score, 0); assert.equal(h.state.lives, startingLives); assert.equal(h.state.weapon, 'laser');
   assert.equal(h.state.inventory.laser, 1);
-  for (const type of ['spread','rockets']) assert.equal(h.state.inventory[type],0);for (const type of ['plasma','beam']) assert.equal(h.state.inventory[type],1,'Found weapons persist across sorties');
+  for (const type of ['spread','arc']) assert.equal(h.state.inventory[type],0);for (const type of ['plasma','beam']) assert.equal(h.state.inventory[type],1,'Found weapons persist across sorties');
   for (const name of ['enemies', 'shots', 'hostileShots', 'pickups']) assert.equal(h.state[name].length, 0, name);
   assert.equal(h.state.fireCount, 0); assert.equal(h.state.keyCount, 0); assert.equal(h.state.movePointerId, null);
   assert.equal(h.frames.length, 1);
@@ -563,14 +563,14 @@ test('commanders fly distinct finite routes and late bosses enter a third phase'
  }
 });
 
-test('top weapon tiers really create fragments, splash, steering and ricochet',()=>{
+test('top weapon tiers really create fragments, lightning chains and ricochet',()=>{
  const plasma=harness();plasma.start();plasma.state.inventory.plasma=5;plasma.api.setWeapon('plasma');plasma.api.shoot();
  const ball=plasma.state.shots[0],victim=plasma.api.createEnemy('armored');victim.x=ball.x;victim.y=ball.y-20;victim.vx=0;victim.vy=0;plasma.api.update(.035);
  assert.ok(plasma.state.shots.some(s=>s.color==='#e6b0ff'),'LV5 plasma creates moving fragmentation shots');
- const rockets=harness();rockets.start();rockets.state.inventory.rockets=5;rockets.api.setWeapon('rockets');rockets.api.shoot();
- const rocket=rockets.state.shots[2],target=rockets.api.createEnemy('armored'),nearby=rockets.api.createEnemy('armored');
- target.x=rocket.x;target.y=rocket.y-14;target.vx=target.vy=0;nearby.x=target.x+48;nearby.y=target.y;nearby.vx=nearby.vy=0;const hp=nearby.hp;
- rockets.api.update(.035);assert.ok(nearby.hp<hp,'LV5 rocket explosion damages a nearby ship');
+ const arc=harness();arc.start();arc.state.inventory.arc=5;arc.api.setWeapon('arc');arc.api.shoot();
+ const bolt=arc.state.shots[0],target=arc.api.createEnemy('armored'),nearby=arc.api.createEnemy('armored');
+ target.x=bolt.x;target.y=bolt.y-14;target.vx=target.vy=0;nearby.x=target.x+100;nearby.y=target.y;nearby.vx=nearby.vy=0;const hp=nearby.hp;
+ arc.api.update(.035);assert.ok(nearby.hp<hp,'LV5 Tesla chain damages a ship beyond a rocket-sized splash');assert.ok(arc.state.arcs.length>0,'Electric chain is rendered');
  const spread=harness();spread.start();spread.state.inventory.spread=5;spread.api.setWeapon('spread');spread.api.shoot();
  const orb=spread.state.shots[0];orb.x=2;orb.y=450;orb.vx=-400;spread.api.update(.035);assert.ok(orb.vx>0&&orb.bounce===0,'Legendary spread ricochets once off a side');
 });
@@ -580,7 +580,64 @@ test('endless campaign keeps growing after the thirtieth commander',()=>{
  let previous=0;
  for(let stage=1;stage<=32;stage++){
   assert.equal(h.state.level,stage);h.api.beginBoss();assert.ok(h.state.boss.maxHp>previous,'Endless stage '+stage+' does not reset boss difficulty');previous=h.state.boss.maxHp;
-  h.api.damageBoss(previous);assert.equal(h.state.stageMode,'intermission');
-  h.api.update(3.5);assert.equal(h.state.running,true);assert.ok(h.state.enemies.length<=h.api.enemyCap());
+  h.api.damageBoss(previous);assert.equal(h.state.stageMode,'victory');
+  h.api.update(4.7);h.api.update(1);assert.equal(h.state.running,true);assert.ok(h.state.enemies.length<=h.api.enemyCap());
  }
+});
+
+test('victory saves immediately, claps and celebrates before revealing results once',()=>{
+ const h=harness({autoFire:true});h.start();h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);
+ assert.equal(h.state.stageMode,'victory');assert.equal(h.state.running,true);assert.equal(h.element('over').classList.contains('hidden'),true);assert.equal(h.element('victoryScene').classList.contains('hidden'),false);
+ assert.equal(h.api.profile.state.missions[1].clears,1);const credits=h.api.profile.state.credits,frame=h.element('victoryPilot').style.backgroundPosition;
+ assert.equal(h.api.shoot(),false);assert.equal(h.api.activateSpecial(),false);assert.equal(h.api.damagePlayer(),false);
+ h.advance(.2);assert.notEqual(h.element('victoryPilot').style.backgroundPosition,frame);assert.ok(h.state.fireworks.length>0&&h.state.fireworks.length<=180);
+ h.advance(3.8);assert.equal(h.element('over').classList.contains('hidden'),true);assert.equal(h.state.enemies.length,0);assert.equal(h.state.hostileShots.length,0);
+ h.advance(.8);assert.equal(h.state.running,false);assert.equal(h.element('over').classList.contains('hidden'),false);assert.ok(h.element('over').classList.contains('result-enter'));
+ h.api.defeatBoss();h.api.endGame();assert.equal(h.api.profile.state.credits,credits);assert.equal(h.api.profile.state.missions[1].clears,1);
+});
+test('victory and clap clocks freeze on backgrounding and restart clears the scene',()=>{
+ const h=harness();h.start();h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);h.advance(.4);h.visibility(true);
+ const before=JSON.stringify([h.state.victoryTime,h.state.fireworks,h.element('victoryPilot').style.backgroundPosition]);h.advance(10);assert.equal(JSON.stringify([h.state.victoryTime,h.state.fireworks,h.element('victoryPilot').style.backgroundPosition]),before);
+ h.visibility(false);h.api.setPaused(false);h.advance(.2);assert.ok(h.state.victoryTime>.5);h.element('restartMission').emit('click');assert.equal(h.state.stageMode,'wave');assert.equal(h.element('victoryScene').classList.contains('hidden'),true);assert.equal(h.state.fireworks.length,0);
+});
+test('leaving during victory keeps the clear on disk without awarding twice',()=>{
+ const h=harness();h.start();h.api.beginBoss();h.api.damageBoss(h.state.boss.maxHp);const credits=h.api.profile.state.credits;h.api.returnToLobby();
+ const next=harness({saved:Object.fromEntries(h.storageValues)});assert.equal(next.api.profile.state.missions[1].clears,1);assert.equal(next.api.profile.state.credits,credits);assert.equal(next.api.profile.state.unlocked,2);
+});
+test('old rocket powers migrate to Tesla while campaign progress stays intact',()=>{
+ const old={version:3,credits:456,missions:{1:{stars:2,score:2000,clears:1}},unlocked:2,selected:2,arsenal:{laser:true,rockets:true},weaponLevels:{laser:3,rockets:4}};
+ const h=harness({saved:{'imranStarDefender.v3':JSON.stringify(old)}});h.start();assert.equal(h.state.inventory.arc,4);assert.equal(h.state.inventory.laser,3);assert.equal(h.api.profile.state.credits,456);assert.equal(h.api.profile.state.missions[1].clears,1);assert.equal(h.state.level,2);assert.equal(h.state.inventory.rockets,undefined);
+});
+test('Tesla ranks chain to one through five different targets without duplicate damage',()=>{
+ for(let power=1;power<=5;power++){
+  const h=harness();h.start();h.state.inventory.arc=power;h.api.setWeapon('arc');h.api.shoot();const shot=h.state.shots[0],targets=[];h.state.shots.length=1;
+  for(let i=0;i<6;i++){const e=h.api.createEnemy('armored');e.x=shot.x+i*65;e.y=shot.y-14;e.hp=e.maxHp=100;e.vx=e.vy=0;targets.push(e)}
+  h.api.update(.035);assert.equal(targets.filter(e=>e.hp<100).length,power);assert.ok(targets.every(e=>e.hp>80),'No repeated hit or unbounded chain');assert.equal(h.state.arcs.length,power-1);
+ }
+});
+test('fire-rate boosters react to pressure but cannot bypass rare weapon limits',()=>{
+ const h=harness();h.start();h.state.player.inv=Infinity;h.api.update(16);h.state.enemies.length=0;
+ assert.equal(h.api.dropBoost(100,100,true),false,'Calm first sector has no boost');for(let i=0;i<6;i++)h.api.createEnemy();assert.equal(h.api.dropBoost(100,100,true),true);
+ assert.equal(h.state.weaponDropCount,1);assert.equal(h.state.boostDropCount,1);assert.equal(h.api.dropBoost(100,100,true),false,'Existing boost and cooldown block duplicates');
+ h.pickup('overdrive');assert.equal(h.state.boostTier,1);assert.equal(h.api.fireRate(),1.3);assert.ok(h.state.overdrive>0);assert.equal(h.state.inventory.laser,1);assert.equal(h.state.weaponDropCount,1);
+ h.pickup('overdrive');h.pickup('overdrive');h.pickup('overdrive');assert.equal(h.state.boostTier,3);assert.equal(h.api.fireRate(),1.9);assert.equal(h.state.overdrive,18);
+ h.state.pickups.length=0;h.api.setPaused(true);h.advance(30);assert.equal(h.state.overdrive,18);h.api.setPaused(false);h.advance(18.1);assert.equal(h.state.overdrive,0);assert.equal(h.api.fireRate(),1);
+});
+test('overdrive increases actual firing frequency and resets with the sortie',()=>{
+ const h=harness({autoFire:true});h.start();h.state.player.inv=Infinity;h.advance(1);const before=h.state.shotsFired;h.pickup('overdrive');h.pickup('overdrive');h.pickup('overdrive');const start=h.state.shotsFired;h.state.shots.length=0;h.advance(1);assert.ok(h.state.shotsFired-start>before*1.5);h.api.startGame();assert.equal(h.state.overdrive,0);assert.equal(h.state.boostTier,0);
+});
+
+test('dense or accelerated waves drop bounded independent turbo capsules',()=>{
+ const h=harness();h.api.configureMission(6);h.start();h.state.player.inv=Infinity;h.api.update(16);h.state.enemies.length=0;h.state.pickups.length=0;
+ for(let i=0;i<4;i++){assert.equal(h.api.dropBoost(100,100,true),true,'Accelerated sector supports a booster');h.state.pickups.length=0;assert.equal(h.api.dropBoost(100,100,true),false,'Ten-second cooldown is strict');h.api.update(10);h.state.enemies.length=0;h.state.pickups.length=0;}
+ assert.equal(h.state.boostDropCount,4);assert.equal(h.api.dropBoost(100,100,true),false,'Finite stage budget');assert.ok(h.state.weaponDropCount<=3,'Independent weapon budget remains rare');
+});
+test('phone lobby flight animates gently under system low motion and respects the game switch',()=>{
+ const h=harness({systemLowMotion:true});h.api.animateLobby(1000);const pilot=h.element('homePage:.pilot-showcase'),before=pilot.style.transform;h.api.animateLobby(2000);assert.notEqual(pilot.style.transform,before);
+ const offset=Number(pilot.style.transform.match(/0,([-.0-9]+)px/)[1]);assert.ok(Math.abs(offset)<=1.4,'System reduced motion keeps a gentle amplitude');
+ h.api.profile.setting('reducedMotion',true);h.api.animateLobby(3000);const fixed=pilot.style.transform;h.api.animateLobby(4000);assert.equal(pilot.style.transform,fixed,'Explicit in-game motion preference is respected');
+});
+
+test('a lethal upgraded projectile clears combat effects before the celebration',()=>{
+ for(const weapon of ['laser','spread','plasma','arc','beam']){const h=harness();h.start();h.state.inventory[weapon]=5;h.api.setWeapon(weapon);h.api.beginBoss();const boss=h.state.boss;boss.entry=0;boss.hp=.01;h.api.update(0);h.api.shoot();for(const shot of h.state.shots){shot.x=boss.x;shot.y=boss.y}h.api.update(0);assert.equal(h.state.stageMode,'victory',weapon);assert.equal(h.state.shots.length,0,weapon+' cannot create fragments after victory');assert.equal(h.state.hostileShots.length,0);assert.equal(h.api.profile.state.missions[1].clears,1);}
 });

@@ -1,13 +1,11 @@
-# Проверка Imran Star Defender 4.0.0
+# V5 verification — 3 October 2026
 
-3 октября 2026. Результат: 47 тестов, 47 успешных, 0 ошибок.
+57 / 57 automated tests pass against the actual private shipped gameplay loop and profile implementation.
 
-Проверяется настоящий игровой цикл, сохранение кампании и обработчики управления, а не отдельная копия механик. В покрытие входят 30 миссий и уникальных командиров, последовательный рост брони, отдельные маршруты и 14 разных атак, третья фаза последних боссов, настоящие входы групп/полуколец/орд, задержка стрельбы при входе, пауза, ограничение снарядов и частиц, пять ступеней каждого оружия, осколки, урон ракет по области, рикошет, редкий ввод капсул и сохранение улучшений, совместимость с сохранениями V3, многопальцевое и клавиатурное управление, урон, щит, медали, переходы и бесконечный режим после 30-го босса.
+New coverage: victory saved immediately; 4.6-second celebration before results; animated clap frames and bounded fireworks; pause/visibility freeze; leaving or restarting mid-celebration; exactly-once awards; old rocket rank migration; Tesla chain length and real damage at every rank; actual overdrive firing frequency, duration, stack cap, expiry and restart; separate pressure gate, 10-second cooldown and four-boost budget; phone lobby motion with reduced system amplitude and explicit in-game preference.
 
-В браузере проверены новое меню, кампания, ангар, настройки, запуск, пауза и возврат; размеры 360×640, 390×844 и 1280×720. Изолированная тестовая страница использовалась для осмотра финального босса и полукругового построения; её элементы не входят в поставку.
+Existing coverage retained: all 30 commanders and monotonic difficulty, 14 attack patterns, distinct routes, six formations, multi-touch, fast-projectile collisions, finite hostile shots and effects, rare weapon pods (28-second gap / three per stage), splash/fragments/ricochet, saved upgrades and endless progression after stage 30.
 
-Графика командиров: 30 отдельных спрайтов в сетке 6×5, PNG 1536×1024 с реальным альфа-каналом. Интерфейс разведданных и бой используют одинаковое изображение своего командира.
+Visual browser QA: phone layouts 390×844 and 844×390, menu transforms change between observations, six-frame victory atlas, results, Tesla and turbo HUD; no console errors. Desktop and compact portrait layouts checked before publication. Private QA controls exist only in the local work fixture and are excluded from the shipped files.
 
-Офлайн-HTML: один встроенный сценарий, 12 встроенных изображений, внешних локальных ссылок src/href нет; синтаксис проверен. Работа файлового режима визуально не проверялась. Все 104 идентификатора интерфейса уникальны.
-
-Подготовлены и синхронизированы три комплекта мобильных ресурсов: mobile/www, Android public и iOS public. Скрипты и изображения совпадают с веб-версией. Нативный сценарий проверен на синтаксис; проекты имеют версию 4.0.0 и номер 400. APK/AAB/IPA не скомпилированы и не подписаны. Проверки на физических устройствах ещё нужны.
+Android and iOS source projects: version 5.0.0 / build 500, web resources synchronized and checked by SHA-257. Archive CRC, dependency presence, standalone syntax and embedded assets verified. These checks do not constitute compilation or testing on physical phones; APK/AAB/IPA signing and device QA remain outstanding.

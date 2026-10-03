@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const C=ImranCampaign,P=C.profile,el=id=>document.getElementById(id);
 let region=C.mission(P.state.selected).world,page='home',selected=P.state.selected;
-const weaponNames={laser:'ЛАЗЕР',spread:'ВЕЕР',plasma:'ПЛАЗМА',rockets:'РАКЕТЫ',beam:'ЛУЧ'};
+const weaponNames={laser:'ЛАЗЕР',spread:'ВЕЕР',plasma:'ПЛАЗМА',arc:'ТЕСЛА',beam:'ЛУЧ'};
 const ranks=['I','II','III','IV','V'];
 const fallbackGrades=[{rank:1,name:'Базовый',color:'#89cfdd',description:'Стартовый класс оружия.'},{rank:2,name:'Усиленный',color:'#9af0bb',description:'Повторная капсула повышает боевую мощность.'},{rank:3,name:'Продвинутый',color:'#adbbff',description:'Более плотный огонь и дополнительные снаряды.'},{rank:4,name:'Элитный',color:'#d89aff',description:'Высокая мощность против тяжёлой брони.'},{rank:5,name:'Легендарный',color:'#ffd382',description:'Предельный класс оружия.'}];
 function grades(){return Array.isArray(C.weaponGrades)&&C.weaponGrades.length===5?C.weaponGrades:fallbackGrades}

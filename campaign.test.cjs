@@ -41,7 +41,7 @@ test('a v3 saved campaign keeps progress, credits, settings, ship and arsenal af
  const save=storage(),old={version:3,credits:12345,unlocked:6,selected:4,endlessBest:67890,
   missions:Object.fromEntries(Array.from({length:5},(_,i)=>[i+1,{stars:(i%3)+1,score:1000+i*300,clears:i+1}])),
   upgrades:{hull:2,reactor:3,magnet:4,shield:2,wingman:1,salvage:2},
-  arsenal:{laser:true,spread:true,plasma:true,rockets:false,beam:false},ships:['pioneer','swift'],ship:'swift',
+  arsenal:{laser:true,spread:true,plasma:true,arc:false,beam:false},ships:['pioneer','swift'],ship:'swift',
   settings:{sound:true,music:false,autoFire:false,reducedMotion:true,vibration:false,difficulty:'hard'}};
  assert.equal(C.key,'imranStarDefender.v3');save.setItem(C.key,JSON.stringify(old));
  const profile=C.createProfile(save);
