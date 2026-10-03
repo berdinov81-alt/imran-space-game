@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='imran-v4.0.0';
+const CACHE='imran-v4.0.1';
 const FILES=['./','index.html','privacy.html','THIRD_PARTY_NOTICES.txt','campaign.js','lobby.js','game.js','native.js','styles.css','menu-v3.png','pilot-v2.png','nebula-v2.png','aliens-v2.png','bosses-v4.png','face.jpg','app-icon.svg','app-icon-192.png','app-icon-512.png','manifest.webmanifest'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('imran-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
