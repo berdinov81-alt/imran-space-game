@@ -72,7 +72,7 @@ function harness({ width = 390, height = 844, storageBlocked = false, mode = 'ca
     requestAnimationFrame: fn => frames.push(fn),
     addEventListener(type, fn) { if (!events.has(type)) events.set(type, []); events.get(type).push(fn); }
   };
-  vm.createContext(sandbox);vm.runInContext(fs.readFileSync(path.join(root,'campaign.js'),'utf8'),sandbox);sandbox.ImranCampaign.profile.state.settings.autoFire=autoFire;
+  vm.createContext(sandbox);for(const name of ['audio-synth.js','audio.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),sandbox);vm.runInContext(fs.readFileSync(path.join(root,'campaign.js'),'utf8'),sandbox);sandbox.ImranCampaign.profile.state.settings.autoFire=autoFire;
   const source = fs.readFileSync(path.join(root, 'game.js'), 'utf8');
   const instrumented = source.replace(/\}\)\(\);\s*$/, `
     globalThis.inspection = {

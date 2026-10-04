@@ -1,11 +1,11 @@
-# V5 verification — 3 October 2026
+# V6 verification — 4 October 2026
 
-57 / 57 automated tests pass against the actual private shipped gameplay loop and profile implementation.
+66 / 66 automated tests pass against the shipped gameplay loop, profile, mixer and PCM assets.
 
-New coverage: victory saved immediately; 4.6-second celebration before results; animated clap frames and bounded fireworks; pause/visibility freeze; leaving or restarting mid-celebration; exactly-once awards; old rocket rank migration; Tesla chain length and real damage at every rank; actual overdrive firing frequency, duration, stack cap, expiry and restart; separate pressure gate, 10-second cooldown and four-boost budget; phone lobby motion with reduced system amplitude and explicit in-game preference.
+New coverage: cached decoding, voice sprite offsets, music ducking, priority interruption with stale onended callbacks, at most two music sources during rapid scene switches, finished fanfare persistence, background suspend and gesture lock, pending speech discarded on pause, independent zero-volume channels and mute, bounded effects and source cleanup, unavailable audio or missing assets, unclipped audible PCM and all 16 Russian cue boundaries, preservation of old mute preferences and numeric volume validation.
 
-Existing coverage retained: all 30 commanders and monotonic difficulty, 14 attack patterns, distinct routes, six formations, multi-touch, fast-projectile collisions, finite hostile shots and effects, rare weapon pods (28-second gap / three per stage), splash/fragments/ricochet, saved upgrades and endless progression after stage 30.
+All V5 gameplay coverage retained: 30 unique commanders, formations, rare capsules, five weapon ranks, Tesla, overdrive, multi-touch, hit detection, bounded projectiles, progress migration, paused victory, immediate and exactly-once awards.
 
-Visual browser QA: phone layouts 390×844 and 844×390, menu transforms change between observations, six-frame victory atlas, results, Tesla and turbo HUD; no console errors. Desktop and compact portrait layouts checked before publication. Private QA controls exist only in the local work fixture and are excluded from the shipped files.
+Browser QA: 390×844, 360×640 and 1280×720. First gesture unlock, voice preview, volume persistence, battle/boss/victory music, background suspend, restart from pause and returning to the menu checked using the real AudioContext. No console errors. Deterministic QA controls remain only in the work fixture, outside shipped files.
 
-Android and iOS source projects: version 5.0.0 / build 500, web resources synchronized and checked by SHA-257. Archive CRC, dependency presence, standalone syntax and embedded assets verified. These checks do not constitute compilation or testing on physical phones; APK/AAB/IPA signing and device QA remain outstanding.
+Native source projects: version 6.0.0 / build 600. Android and iOS resources synchronized; audio and gameplay assets checked by SHA-256. Standalone inline syntax, embedded assets and archive CRC checked. No APK/AAB/IPA compilation, signing or physical-device audio validation is claimed; SDK/JDK and Mac/Xcode builds remain outstanding.

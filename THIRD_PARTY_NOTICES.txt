@@ -1,4 +1,4 @@
-Third-party notices — Imran Star Defender 3.0.0
+Third-party notices — Imran Star Defender 6.0.0
 
 @capacitor/core
 MIT License
@@ -124,3 +124,6 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+
+
+Russian voice audio: generated offline with Piper TTS 1.8.0 using ru_RU-denis-medium (generic synthetic narrator). The model card identifies the training dataset as CC0. Source and licence references: AUDIO.md. Piper executable, model and Python dependencies are not distributed in this game.

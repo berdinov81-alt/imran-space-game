@@ -46,9 +46,12 @@ test('a v3 saved campaign keeps progress, credits, settings, ship and arsenal af
  assert.equal(C.key,'imranStarDefender.v3');save.setItem(C.key,JSON.stringify(old));
  const profile=C.createProfile(save);
  for(const field of ['credits','unlocked','selected','endlessBest','ship'])assert.equal(profile.state[field],old[field],field);
- for(const field of ['missions','upgrades','arsenal','settings','ships'])assert.deepEqual(profile.state[field],old[field],field);
+ for(const field of ['missions','upgrades','arsenal','ships'])assert.deepEqual(profile.state[field],old[field],field);
  profile.save();assert.deepEqual(Array.from(save.values.keys()),['imranStarDefender.v3']);
- const reloaded=C.createProfile(save);for(const field of ['missions','upgrades','arsenal','settings','ships'])assert.deepEqual(reloaded.state[field],old[field],field);
+ for(const [key,value] of Object.entries(old.settings))assert.equal(profile.state.settings[key],value,key);assert.equal(profile.state.settings.voice,true);assert.equal(profile.state.settings.musicVolume,55);
+ const reloaded=C.createProfile(save);for(const field of ['missions','upgrades','arsenal','ships'])assert.deepEqual(reloaded.state[field],old[field],field);
 });
 
 test('every mission resolves to its own boss artwork cell',()=>{assert.equal(new Set(C.bossTypes.map(b=>b.artIndex)).size,30);for(const m of C.missions)assert.ok(Number.isInteger(C.bossTypes[m.boss].artIndex));});
+
+test('audio settings preserve mute and clamp separate volume levels',()=>{const store=storage(),p=C.createProfile(store);p.setting('sound',false);p.setting('voice',false);p.setting('musicVolume',120);p.setting('effectsVolume',-3);p.setting('voiceVolume',25);p.setting('masterVolume',NaN);const next=C.createProfile(store);assert.equal(next.state.settings.sound,false);assert.equal(next.state.settings.voice,false);assert.equal(next.state.settings.musicVolume,100);assert.equal(next.state.settings.effectsVolume,0);assert.equal(next.state.settings.voiceVolume,25);assert.equal(next.state.settings.masterVolume,80);});

@@ -1,9 +1,9 @@
 {
   "name": "imran-space-game",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "private": true,
   "scripts": {
-    "test": "node --test game.test.cjs campaign.test.cjs",
+    "test": "node --test game.test.cjs campaign.test.cjs audio.test.cjs",
     "start": "node serve.cjs"
   }
 }
